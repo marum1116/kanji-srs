@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>忘却曲線っぽい漢字復習（SRS）</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif; }
+    body { margin: 0; background:#f6f7f9; color:#111; }
+    header { padding: 16px; background:#fff; border-bottom:1px solid #e6e8ee; position: sticky; top:0; }
+    h1 { font-size: 18px; margin: 0 0 6px; }
+    .sub { font-size: 12px; color:#555; }
+    main { padding: 12px; max-width: 820px; margin: 0 auto; }
+    section { background:#fff; border:1px solid #e6e8ee; border-radius: 12px; padding: 12px; margin: 12px 0; }
+    h2 { font-size: 16px; margin: 0 0 10px; }
+    .row { display:flex; gap:8px; flex-wrap: wrap; }
+    input[type="text"] { flex:1; min-width: 220px; padding: 10px 12px; border:1px solid #ccd2df; border-radius: 10px; font-size: 16px; }
+    button { border:0; border-radius: 10px; padding: 10px 12px; font-size: 14px; cursor: pointer; }
+    .btn { background:#2f6fed; color:#fff; }
+    .btn:disabled { opacity:.5; cursor:not-allowed; }
+    .ghost { background:#eef2ff; color:#1f3fb3; }
+    .danger { background:#ffecec; color:#a01414; }
+    .small { font-size: 12px; color:#555; }
+    .cards { display:grid; gap:10px; }
+    .card { border:1px solid #e6e8ee; border-radius: 12px; padding: 12px; }
+    .cardTop { display:flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+    .k { font-size: 44px; line-height: 1; letter-spacing: 2px; }
+    .kHidden {
+      font-size: 18px; padding: 14px 12px; border: 2px dashed #ccd2df; border-radius: 12px;
+      color:#555; background:#fafbff; text-align:center;
+    }
+    .meta { text-align:right; font-size: 12px; color:#555; }
+    .actions { display:flex; gap:8px; margin-top: 10px; flex-wrap: wrap; }
+    .ok { background:#16a34a; color:#fff; }
+    .ng { background:#ef4444; color:#fff; }
+    table { width:100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 8px; border-bottom: 1px solid #eef0f5; text-align: left; }
+    .right { text-align:right; }
+    .muted { color:#666; }
+    .badge { display:inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background:#f0f3ff; color:#2a4bc7; }
+    .footerRow { display:flex; gap:8px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>忘却曲線っぽい漢字復習（SRS）</h1>
+  <div class="sub">白紙で書く → タップで答え表示 → 「書けた / 書けなかった」記録（方式B）</div>
+</header>
+
+<main>
+  <section>
+    <h2>新規の漢字を追加</h2>
+    <div class="row">
+      <input id="addInput" type="text" placeholder="例）協議責任（複数貼り付けOK）" inputmode="text" />
+      <button class="btn" id="addBtn">追加</button>
+      <button class="ghost" id="exportBtn">エクスポート</button>
+      <button class="ghost" id="importBtn">インポート</button>
+      <button class="danger" id="resetBtn">全削除</button>
+    </div>
+    <div class="small" style="margin-top:8px;">
+      ※ 追加した漢字は「今日やる漢字」に入り、最初の復習は <b>+6時間</b> に設定します（stage 0）。<br/>
+      ※ データはこの端末のブラウザに保存されます（同期なし）。
+    </div>
+  </section>
+
+  <section>
+    <div class="footerRow">
+      <h2 style="margin:0;">今日やる漢字 <span class="badge" id="dueCount">0</span></h2>
+      <div class="small muted" id="todayRange"></div>
+    </div>
+    <div class="cards" id="dueList" style="margin-top:10px;"></div>
+    <div class="small muted" id="emptyDue" style="display:none; margin-top:8px;">
+      今日の復習はありません。新規を追加するか、明日以降に出ます。
+    </div>
+  </section>
+
+  <section>
+    <h2>全漢字（管理）</h2>
+    <div class="small muted" style="margin-bottom:8px;">
+      nextReviewAt（次回復習日時）で並べています。
+    </div>
+    <div style="overflow:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>漢字</th>
+            <th class="right">stage</th>
+            <th>次回</th>
+            <th class="right">成功</th>
+            <th class="right">失敗</th>
+            <th class="right"></th>
+          </tr>
+        </thead>
+        <tbody id="allTable"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+  // ===== 設定（忘却曲線っぽい復習間隔） =====
+  // stage 0 から順に：+6h, +1d, +3d, +7d, +14d, +30d, +60d, +120d
+  const INTERVALS_MS = [
+    6 * 60 * 60 * 1000,
+    1 * 24 * 60 * 60 * 1000,
+    3 * 24 * 60 * 60 * 1000,
+    7 * 24 * 60 * 60 * 1000,
+    14 * 24 * 60 * 60 * 1000,
+    30 * 24 * 60 * 60 * 1000,
+    60 * 24 * 60 * 60 * 1000,
+    120 * 24 * 60 * 60 * 1000,
+  ];
+  const MAX_STAGE = INTERVALS_MS.length - 1;
+
+  const STORAGE_KEY = "kanji_srs_v1";
+
+  /** @typedef {{
+   *   kanji: string,
+   *   createdAt: string,
+   *   stage: number,
+   *   nextReviewAt: string,
+   *   stats: { success: number, fail: number, lastResult: ("success"|"fail"|null), lastReviewedAt: (string|null) }
+   * }} KanjiItem
+   */
+
+  function loadData() {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return /** @type {KanjiItem[]} */([]);
+    try {
+      const data = JSON.parse(raw);
+      if (!Array.isArray(data)) return [];
+      return data;
+    } catch {
+      return [];
+    }
+  }
+
+  function saveData(items) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  }
+
+  function nowMs() { return Date.now(); }
+
+  function toISO(ms) { return new Date(ms).toISOString(); }
+
+  function fmt(msOrIso) {
+    const d = (typeof msOrIso === "string") ? new Date(msOrIso) : new Date(msOrIso);
+    // 日本向け：YYYY/MM/DD HH:MM
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    return `${y}/${m}/${day} ${hh}:${mm}`;
+  }
+
+  function endOfTodayMs() {
+    const d = new Date();
+    d.setHours(23, 59, 59, 999);
+    return d.getTime();
+  }
+
+  function uniqKanjiFromText(text) {
+    // CJK統合漢字っぽいものを抽出（ゆるめ）
+    // ひらがな/カタカナ/英数/記号は除外
+    const chars = Array.from(text.trim());
+    const out = [];
+    const seen = new Set();
+    for (const ch of chars) {
+      // 漢字っぽいレンジ（厳密ではないが実用十分）
+      const code = ch.codePointAt(0);
+      const isKanji =
+        (code >= 0x4E00 && code <= 0x9FFF) || // CJK Unified Ideographs
+        (code >= 0x3400 && code <= 0x4DBF) || // Extension A
+        (code >= 0xF900 && code <= 0xFAFF);   // Compatibility Ideographs
+      if (!isKanji) continue;
+      if (seen.has(ch)) continue;
+      seen.add(ch);
+      out.push(ch);
+    }
+    return out;
+  }
+
+  function getDueItems(items) {
+    const cutoff = endOfTodayMs();
+    return items
+      .filter(it => new Date(it.nextReviewAt).getTime() <= cutoff)
+      .sort((a, b) => new Date(a.nextReviewAt) - new Date(b.nextReviewAt));
+  }
+
+  function addKanji(text) {
+    const items = loadData();
+    const existing = new Set(items.map(it => it.kanji));
+    const ks = uniqKanjiFromText(text);
+    if (ks.length === 0) return { added: 0, ignored: 0 };
+
+    let added = 0, ignored = 0;
+    const baseNow = nowMs();
+    for (const k of ks) {
+      if (existing.has(k)) { ignored++; continue; }
+      const item = {
+        kanji: k,
+        createdAt: toISO(baseNow),
+        stage: 0,
+        nextReviewAt: toISO(baseNow + INTERVALS_MS[0]),
+        stats: { success: 0, fail: 0, lastResult: null, lastReviewedAt: null }
+      };
+      items.push(item);
+      existing.add(k);
+      added++;
+    }
+    saveData(items);
+    return { added, ignored };
+  }
+
+  // 方式B：成功で stage+1、失敗で stage-1（下限0）
+  function markResult(kanji, result) {
+    const items = loadData();
+    const idx = items.findIndex(it => it.kanji === kanji);
+    if (idx < 0) return;
+
+    const it = items[idx];
+    const now = nowMs();
+
+    if (result === "success") {
+      it.stage = Math.min(it.stage + 1, MAX_STAGE);
+      it.stats.success += 1;
+      it.stats.lastResult = "success";
+    } else {
+      it.stage = Math.max(it.stage - 1, 0);
+      it.stats.fail += 1;
+      it.stats.lastResult = "fail";
+    }
+    it.stats.lastReviewedAt = toISO(now);
+    it.nextReviewAt = toISO(now + INTERVALS_MS[it.stage]);
+
+    items[idx] = it;
+    saveData(items);
+  }
+
+  function removeKanji(kanji) {
+    const items = loadData().filter(it => it.kanji !== kanji);
+    saveData(items);
+  }
+
+  function exportData() {
+    const data = localStorage.getItem(STORAGE_KEY) || "[]";
+    // クリップボードコピー（対応してない場合はprompt）
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(data).then(() => {
+        alert("エクスポートしました（クリップボードにコピー済み）");
+      }).catch(() => {
+        prompt("以下をコピーしてください", data);
+      });
+    } else {
+      prompt("以下をコピーしてください", data);
+    }
+  }
+
+  function importData() {
+    const raw = prompt("インポートするデータ（JSON）を貼り付けてください");
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) throw new Error("not array");
+      // ざっくりバリデーション
+      const cleaned = parsed
+        .filter(x => x && typeof x.kanji === "string")
+        .map(x => ({
+          kanji: x.kanji,
+          createdAt: x.createdAt || toISO(nowMs()),
+          stage: Number.isFinite(x.stage) ? Math.max(0, Math.min(MAX_STAGE, x.stage)) : 0,
+          nextReviewAt: x.nextReviewAt || toISO(nowMs() + INTERVALS_MS[0]),
+          stats: x.stats && typeof x.stats === "object" ? {
+            success: Number.isFinite(x.stats.success) ? x.stats.success : 0,
+            fail: Number.isFinite(x.stats.fail) ? x.stats.fail : 0,
+            lastResult: (x.stats.lastResult === "success" || x.stats.lastResult === "fail") ? x.stats.lastResult : null,
+            lastReviewedAt: x.stats.lastReviewedAt || null
+          } : { success: 0, fail: 0, lastResult: null, lastReviewedAt: null }
+        }));
+
+      // 同一漢字は最新を優先（後勝ち）
+      const map = new Map();
+      for (const it of cleaned) map.set(it.kanji, it);
+      saveData(Array.from(map.values()));
+      render();
+      alert("インポートしました");
+    } catch {
+      alert("形式が正しくありません（JSON配列を貼り付けてください）");
+    }
+  }
+
+  // ===== UIレンダリング =====
+  function render() {
+    const items = loadData();
+
+    // 今日の範囲表示
+    const start = new Date(); start.setHours(0,0,0,0);
+    const end = new Date(); end.setHours(23,59,59,999);
+    document.getElementById("todayRange").textContent =
+      `判定範囲：${fmt(start)} 〜 ${fmt(end)}`;
+
+    const due = getDueItems(items);
+    document.getElementById("dueCount").textContent = String(due.length);
+
+    const dueList = document.getElementById("dueList");
+    dueList.innerHTML = "";
+
+    document.getElementById("emptyDue").style.display = due.length ? "none" : "block";
+
+    for (const it of due) {
+      const card = document.createElement("div");
+      card.className = "card";
+
+      const top = document.createElement("div");
+      top.className = "cardTop";
+
+      const left = document.createElement("div");
+      // 白紙チェック：最初は隠す → タップで表示
+      const hidden = document.createElement("div");
+      hidden.className = "kHidden";
+      hidden.textContent = "白紙で書いた？（タップで答え：漢字を表示）";
+
+      const shown = document.createElement("div");
+      shown.className = "k";
+      shown.textContent = it.kanji;
+      shown.style.display = "none";
+
+      let isRevealed = false;
+      function toggleReveal() {
+        isRevealed = !isRevealed;
+        hidden.style.display = isRevealed ? "none" : "block";
+        shown.style.display = isRevealed ? "block" : "none";
+      }
+      hidden.addEventListener("click", toggleReveal);
+      shown.addEventListener("click", toggleReveal);
+
+      left.appendChild(hidden);
+      left.appendChild(shown);
+
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.innerHTML = `
+        <div>stage: <b>${it.stage}</b></div>
+        <div>期限: ${fmt(it.nextReviewAt)}</div>
+        <div class="muted">成功 ${it.stats.success} / 失敗 ${it.stats.fail}</div>
+      `;
+
+      top.appendChild(left);
+      top.appendChild(meta);
+
+      const actions = document.createElement("div");
+      actions.className = "actions";
+
+      const revealBtn = document.createElement("button");
+      revealBtn.className = "ghost";
+      revealBtn.textContent = "答え（漢字）を表示/非表示";
+      revealBtn.addEventListener("click", toggleReveal);
+
+      const okBtn = document.createElement("button");
+      okBtn.className = "ok";
+      okBtn.textContent = "書けた";
+      okBtn.addEventListener("click", () => {
+        markResult(it.kanji, "success");
+        render();
+      });
+
+      const ngBtn = document.createElement("button");
+      ngBtn.className = "ng";
+      ngBtn.textContent = "書けなかった";
+      ngBtn.addEventListener("click", () => {
+        markResult(it.kanji, "fail");
+        render();
+      });
+
+      actions.appendChild(revealBtn);
+      actions.appendChild(okBtn);
+      actions.appendChild(ngBtn);
+
+      card.appendChild(top);
+      card.appendChild(actions);
+      dueList.appendChild(card);
+    }
+
+    // 全漢字テーブル
+    const tbody = document.getElementById("allTable");
+    tbody.innerHTML = "";
+    const sorted = [...items].sort((a,b) => new Date(a.nextReviewAt) - new Date(b.nextReviewAt));
+
+    for (const it of sorted) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td style="font-size:20px;">${it.kanji}</td>
+        <td class="right">${it.stage}</td>
+        <td>${fmt(it.nextReviewAt)}</td>
+        <td class="right">${it.stats.success}</td>
+        <td class="right">${it.stats.fail}</td>
+        <td class="right"><button class="danger" data-del="${it.kanji}" style="padding:6px 10px; border-radius:10px;">削除</button></td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    // 削除ボタン
+    tbody.querySelectorAll("button[data-del]").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        const k = e.currentTarget.getAttribute("data-del");
+        if (!k) return;
+        if (confirm(`「${k}」を削除しますか？`)) {
+          removeKanji(k);
+          render();
+        }
+      });
+    });
+  }
+
+  // ===== イベント =====
+  document.getElementById("addBtn").addEventListener("click", () => {
+    const input = document.getElementById("addInput");
+    const text = input.value || "";
+    const res = addKanji(text);
+    input.value = "";
+    render();
+    if (res.added || res.ignored) {
+      alert(`追加: ${res.added} / 既に登録: ${res.ignored}`);
+    }
+  });
+
+  // Enterで追加
+  document.getElementById("addInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      document.getElementById("addBtn").click();
+    }
+  });
+
+  document.getElementById("resetBtn").addEventListener("click", () => {
+    if (confirm("全データを削除します。よろしいですか？")) {
+      localStorage.removeItem(STORAGE_KEY);
+      render();
+    }
+  });
+
+  document.getElementById("exportBtn").addEventListener("click", exportData);
+  document.getElementById("importBtn").addEventListener("click", importData);
+
+  // 初期表示
+  render();
+</script>
+</body>
+</html>
