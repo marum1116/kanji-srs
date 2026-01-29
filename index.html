@@ -28,6 +28,8 @@
       border-radius: 10px;
       font-size: 16px;
       box-sizing: border-box;
+      background:#fff;
+      color:#111;
     }
     textarea { min-height: 120px; resize: vertical; }
 
@@ -54,6 +56,7 @@
       color:#334;
       background:#fafbff;
       white-space: pre-line;
+      user-select: none;
     }
     .meta { text-align:right; font-size: 12px; color:#555; min-width: 130px; }
     .actions { display:flex; gap:8px; margin-top: 10px; flex-wrap: wrap; }
@@ -70,7 +73,7 @@
       align-items: center;
       justify-content: center;
       padding: 12px;
-      z-index: 100;
+      z-index: 1000;
     }
     .modal {
       width: min(760px, 100%);
@@ -99,6 +102,7 @@
     .exRow { display:flex; gap:8px; align-items:center; margin: 8px 0; }
     .exRow input { flex: 1; }
     .iconBtn { padding: 8px 10px; border-radius: 10px; }
+
     .warnBox {
       margin-top: 10px;
       padding: 10px 12px;
@@ -113,9 +117,9 @@
       margin-top: 10px;
       padding: 10px 12px;
       border-radius: 12px;
-      background: #eef2ff;
-      border: 1px solid #c7d2fe;
-      color: #1e3a8a;
+      background: #ecfeff;
+      border: 1px solid #a5f3fc;
+      color: #155e75;
       font-size: 12px;
       white-space: pre-line;
     }
@@ -126,50 +130,47 @@
 <header>
   <h1>忘却曲線っぽい漢字復習（SRS）</h1>
   <div class="sub">
-    <span class="pill"><span class="dot ok"></span>例文はキーボードの🎤（音声入力）でOK</span>
+    <span class="pill"><span class="dot ok"></span>例文は「ひらがな」を手動入力（音声入力はキーボードの🎤で）</span>
     <span class="pill"><span class="dot ok"></span>方式B：失敗でstage-1（下限0）</span>
-    <span class="pill" id="kanaStatus"><span class="dot warn" id="kanaDot"></span><span id="kanaText">ひらがな化：未ロード（ボタンで必要時のみ）</span></span>
+    <span class="pill"><span class="dot warn"></span>例文入力は後からでOK（空欄OK・最大5）</span>
   </div>
 </header>
 
 <main>
   <section>
-    <h2>新規の漢字を追加（読みはAPIで自動取得）</h2>
+    <h2>① 新規の漢字を追加（まとめてOK・例文は不要）</h2>
 
     <div class="row">
-      <textarea id="addInput" placeholder="入力例（空行で区切って複数OK）
+      <textarea id="addInput" placeholder="漢字を入力（1行に1文字が推奨／空白や改行で区切って複数OK）
+例：
 強
-さいきょう の きょう
-かぜ が つよい の つよい
-
 協
-きょうりょく の きょう
-きょう ちょう する の きょう"></textarea>
+興
+鏡"></textarea>
     </div>
 
     <div class="row" style="margin-top:8px;">
-      <button class="btn" id="addBtn">追加</button>
+      <button class="btn" id="addBtn">漢字を追加</button>
       <button class="ghost" id="exportBtn">エクスポート</button>
       <button class="ghost" id="importBtn">インポート</button>
       <button class="danger" id="resetBtn">全削除</button>
     </div>
 
     <div class="small" style="margin-top:8px;">
-      ・ブロック形式：<b>1行目=漢字（1文字）</b>、2行目以降=例文（ひらがな推奨）<br/>
-      ・例文は <b>デフォルト2つ</b>（足りない分は空欄で作成）／あとで最大 <b>5つ</b>まで追加できます。<br/>
-      ・例文に漢字が混ざった場合は、編集画面の <b>「ひらがなに直す（試す）」</b> を押せます（失敗したら手動でOK）。
+      ・追加時は <b>漢字だけ</b> でOK（読みはAPIで自動取得／例文は後で入力）<br/>
+      ・追加した漢字は「今日やる漢字」に出たタイミングで、必要なら例文を入れてください（例文なしでも学習できます）
     </div>
   </section>
 
   <section>
     <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-      <h2 style="margin:0;">今日やる漢字 <span class="badge" id="dueCount">0</span></h2>
+      <h2 style="margin:0;">② 今日やる漢字 <span class="badge" id="dueCount">0</span></h2>
       <div class="small muted" id="todayRange"></div>
     </div>
 
     <div class="cards" id="dueList" style="margin-top:10px;"></div>
     <div class="small muted" id="emptyDue" style="display:none; margin-top:8px;">
-      今日の復習はありません。新規を追加するか、明日以降に出ます。
+      今日の復習はありません。新規の漢字を追加すると、今日の分が出ます。
     </div>
   </section>
 
@@ -199,7 +200,7 @@
 <div class="backdrop" id="backdrop" aria-hidden="true">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="modalHeader">
-      <h3 class="modalTitle" id="modalTitle">編集</h3>
+      <h3 class="modalTitle" id="modalTitle">例文編集</h3>
       <div class="row" style="margin:0;">
         <button class="ghost iconBtn" id="closeModalBtn">閉じる</button>
       </div>
@@ -213,21 +214,19 @@
         <div>
           <div class="label">読み（API自動取得）</div>
           <div class="small" style="white-space:pre-line;" id="editReading">—</div>
-          <div class="small muted" style="margin-top:6px;">※ 読みが空の場合は、APIで見つからなかった可能性があります。</div>
         </div>
       </div>
 
-      <div class="label" style="margin-top:12px;">例文（デフォルト2 / 最大5）</div>
+      <div class="label" style="margin-top:12px;">例文（ひらがな推奨・空欄OK / 最大5）</div>
       <div class="small muted">
-        ・例文は「ひらがな」推奨（口頭の指示を再現するため）<br/>
-        ・漢字が混ざっていたら、保存前に <b>「ひらがなに直す（試す）」</b>（不調なら手動で修正）
+        ・デフォルトで2枠を出します（空欄でもOK）<br/>
+        ・後からいつでも追加できます（本人が例文を思いついた時にも追記OK）
       </div>
 
       <div id="examplesArea" style="margin-top:6px;"></div>
 
       <div class="row" style="margin-top:10px;">
         <button class="ghost" id="addExampleBtn">＋ 例文</button>
-        <button class="ghost" id="tryKanaBtn">ひらがなに直す（試す）</button>
         <button class="btn" id="saveEditBtn">保存</button>
         <button class="danger" id="deleteKanjiBtn">この漢字を削除</button>
       </div>
@@ -238,8 +237,9 @@
   </div>
 </div>
 
-<script type="module">
+<script>
   // ===== 設定（忘却曲線っぽい復習間隔） =====
+  // stage 0 から順に：+6h, +1d, +3d, +7d, +14d, +30d, +60d, +120d
   const INTERVALS_MS = [
     6 * 60 * 60 * 1000,
     1 * 24 * 60 * 60 * 1000,
@@ -251,58 +251,9 @@
     120 * 24 * 60 * 60 * 1000,
   ];
   const MAX_STAGE = INTERVALS_MS.length - 1;
-  const STORAGE_KEY = "kanji_srs_v4"; // ←以前のデータを引き継ぎたいなら v3 等に合わせる
 
-  // ===== UI: ひらがな化ステータス =====
-  const kanaDot = document.getElementById("kanaDot");
-  const kanaText = document.getElementById("kanaText");
-  function setKanaStatus(kind, text) {
-    kanaDot.classList.remove("ok", "warn", "bad");
-    kanaDot.classList.add(kind);
-    kanaText.textContent = text;
-  }
-
-  // ===== 折衷案：kuroshiroは「必要時のみ」動的import =====
-  let kuroshiro = null;
-  let kanaReady = false;
-  let kanaInitTried = false;
-
-  async function ensureKanaReady() {
-    if (kanaReady) return true;
-    if (kanaInitTried && !kanaReady) return false;
-
-    kanaInitTried = true;
-    setKanaStatus("warn", "ひらがな化：ロード中…（必要時のみ）");
-
-    try {
-      const [{ default: Kuroshiro }, { default: KuromojiAnalyzer }] = await Promise.all([
-        import("https://esm.sh/kuroshiro@1.2.0"),
-        import("https://esm.sh/kuroshiro-analyzer-kuromoji@1.1.0"),
-      ]);
-
-      kuroshiro = new Kuroshiro();
-      await kuroshiro.init(new KuromojiAnalyzer({
-        dictPath: "https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/"
-      }));
-
-      kanaReady = true;
-      setKanaStatus("ok", "ひらがな化：準備OK（ボタンで実行）");
-      return true;
-    } catch (e) {
-      console.error(e);
-      kanaReady = false;
-      setKanaStatus("bad", "ひらがな化：利用不可（手動でOK）");
-      return false;
-    }
-  }
-
-  async function toHiragana(text) {
-    const t = (text ?? "").toString().trim();
-    if (!t) return "";
-    const ok = await ensureKanaReady();
-    if (!ok || !kuroshiro) throw new Error("kana not available");
-    return (await kuroshiro.convert(t, { to: "hiragana", mode: "normal" })).toString().trim();
-  }
+  // 既存データを引き継ぎたい場合：前のキー（例: kanji_srs_v3 / v4）に合わせてください
+  const STORAGE_KEY = "kanji_srs_v5";
 
   // ===== Kanji API（読み自動取得） =====
   async function fetchReadings(kanjiChar) {
@@ -320,24 +271,16 @@
     }
   }
 
-  /**
-   * @typedef {{
-   *   kanji: string,
-   *   onYomi: string,
-   *   kunYomi: string,
-   *   examples: string[],
-   *   createdAt: string,
-   *   stage: number,
-   *   nextReviewAt: string,
-   *   stats: { success: number, fail: number, lastResult: ("success"|"fail"|null), lastReviewedAt: (string|null) }
-   * }} KanjiItem
-   */
-
+  // ===== util =====
   function loadData() {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return /** @type {KanjiItem[]} */([]);
-    try { const data = JSON.parse(raw); return Array.isArray(data) ? data : []; }
-    catch { return []; }
+    if (!raw) return [];
+    try {
+      const data = JSON.parse(raw);
+      return Array.isArray(data) ? data : [];
+    } catch {
+      return [];
+    }
   }
   function saveData(items) { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); }
   function nowMs() { return Date.now(); }
@@ -352,7 +295,6 @@
     const mm = String(d.getMinutes()).padStart(2, "0");
     return `${y}/${m}/${day} ${hh}:${mm}`;
   }
-
   function endOfTodayMs() {
     const d = new Date();
     d.setHours(23, 59, 59, 999);
@@ -382,23 +324,11 @@
     return false;
   }
 
-  function parseBlocks(rawText) {
-    const blocks = (rawText ?? "")
-      .split(/\n\s*\n/g)
-      .map(b => b.trim())
-      .filter(Boolean);
-
-    /** @type {{kanji:string, examples:string[]}[]} */
-    const out = [];
-
-    for (const b of blocks) {
-      const lines = b.split("\n").map(s => s.trim()).filter(Boolean);
-      if (lines.length < 1) continue;
-      const k = lines[0];
-      if (!isSingleKanjiChar(k)) continue;
-      out.push({ kanji: k, examples: lines.slice(1) });
-    }
-    return out;
+  function clampExamples(examples) {
+    const arr = Array.isArray(examples) ? examples.map(x => (x ?? "").toString()) : [];
+    // デフォルト2枠を見せるため：保存データは空でもOKだが、UI表示は2枠確保する
+    while (arr.length < 2) arr.push("");
+    return arr.slice(0, 5);
   }
 
   function getDueItems(items) {
@@ -408,40 +338,57 @@
       .sort((a, b) => new Date(a.nextReviewAt) - new Date(b.nextReviewAt));
   }
 
-  function clampExamples(examples) {
-    const arr = Array.isArray(examples) ? examples.map(x => (x ?? "").toString()) : [];
-    while (arr.length < 2) arr.push("");
-    return arr.slice(0, 5);
+  // ===== 追加：漢字だけをまとめて =====
+  function parseKanjiList(rawText) {
+    // 改行/空白で分割して、1文字の漢字だけ拾う
+    const tokens = (rawText ?? "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .split(" ")
+      .flatMap(t => t.split("\n"))
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    const out = [];
+    for (const t of tokens) {
+      // 1トークンに複数文字入ってても、1文字ずつばらす（例: "強協" みたいな場合）
+      for (const ch of Array.from(t)) {
+        if (isSingleKanjiChar(ch)) out.push(ch);
+      }
+    }
+    // 重複除去（入力内）
+    return Array.from(new Set(out));
   }
 
-  async function addKanjiFromTextarea(text) {
+  async function addKanjiOnly(text) {
     const items = loadData();
     const existing = new Set(items.map(it => it.kanji));
-    const blocks = parseBlocks(text);
 
-    if (blocks.length === 0) return { added: 0, ignored: 0, invalid: 1, readingFail: 0 };
+    const list = parseKanjiList(text);
+    if (list.length === 0) return { added: 0, ignored: 0, invalid: 1, readingFail: 0 };
 
     let added = 0, ignored = 0, readingFail = 0;
     const baseNow = nowMs();
 
-    for (const b of blocks) {
-      if (existing.has(b.kanji)) { ignored++; continue; }
-      const readings = await fetchReadings(b.kanji);
+    for (const k of list) {
+      if (existing.has(k)) { ignored++; continue; }
+
+      const readings = await fetchReadings(k);
       if (!readings.onYomi && !readings.kunYomi) readingFail++;
 
-      const item = /** @type {KanjiItem} */({
-        kanji: b.kanji,
+      const item = {
+        kanji: k,
         onYomi: readings.onYomi,
         kunYomi: readings.kunYomi,
-        examples: clampExamples(b.examples),
+        examples: [], // ←例文は後で入力（空でもOK）
         createdAt: toISO(baseNow),
         stage: 0,
         nextReviewAt: toISO(baseNow + INTERVALS_MS[0]),
         stats: { success: 0, fail: 0, lastResult: null, lastReviewedAt: null }
-      });
+      };
 
       items.push(item);
-      existing.add(b.kanji);
+      existing.add(k);
       added++;
     }
 
@@ -449,10 +396,12 @@
     return { added, ignored, invalid: 0, readingFail };
   }
 
+  // ===== 方式B：成功でstage+1、失敗でstage-1（下限0） =====
   function markResult(kanji, result) {
     const items = loadData();
     const idx = items.findIndex(it => it.kanji === kanji);
     if (idx < 0) return;
+
     const it = items[idx];
     const now = nowMs();
 
@@ -499,11 +448,11 @@
 
       const cleaned = parsed
         .filter(x => x && typeof x.kanji === "string")
-        .map(x => /** @type {KanjiItem} */({
+        .map(x => ({
           kanji: x.kanji,
           onYomi: typeof x.onYomi === "string" ? x.onYomi : "",
           kunYomi: typeof x.kunYomi === "string" ? x.kunYomi : "",
-          examples: clampExamples(Array.isArray(x.examples) ? x.examples : []),
+          examples: Array.isArray(x.examples) ? x.examples : [],
           createdAt: x.createdAt || toISO(nowMs()),
           stage: Number.isFinite(x.stage) ? Math.max(0, Math.min(MAX_STAGE, x.stage)) : 0,
           nextReviewAt: x.nextReviewAt || toISO(nowMs() + INTERVALS_MS[0]),
@@ -516,7 +465,7 @@
         }));
 
       const map = new Map();
-      for (const it of cleaned) map.set(it.kanji, it);
+      for (const it of cleaned) map.set(it.kanji, it); // 後勝ち
       saveData(Array.from(map.values()));
       render();
       alert("インポートしました");
@@ -532,7 +481,6 @@
   const saveEditBtn = document.getElementById("saveEditBtn");
   const addExampleBtn = document.getElementById("addExampleBtn");
   const deleteKanjiBtn = document.getElementById("deleteKanjiBtn");
-  const tryKanaBtn = document.getElementById("tryKanaBtn");
   const editKanjiEl = document.getElementById("editKanji");
   const editReadingEl = document.getElementById("editReading");
   const examplesArea = document.getElementById("examplesArea");
@@ -583,13 +531,13 @@
       const input = document.createElement("input");
       input.type = "text";
       input.value = val;
-      input.placeholder = `例文${i + 1}（ひらがな推奨）`;
-      input.addEventListener("input", () => updateKanjiMixedWarning());
+      input.placeholder = `例文${i + 1}（ひらがな推奨／空欄OK）`;
+      input.addEventListener("input", updateKanjiMixedWarning);
 
       const del = document.createElement("button");
       del.className = "danger iconBtn";
       del.textContent = "削除";
-      del.disabled = ex.length <= 2;
+      del.disabled = ex.length <= 2; // UI上は最低2枠を維持
       del.addEventListener("click", () => {
         const current = getExamplesInputs();
         if (current.length <= 2) return;
@@ -623,68 +571,13 @@
       return;
     }
 
-    const lines = mixed
-      .slice(0, 6)
-      .map(x => `・例文${x.idx + 1}：${x.line}`);
+    const lines = mixed.slice(0, 8).map(x => `・例文${x.idx + 1}：${x.line}`);
 
     editWarn.style.display = "block";
     editWarn.textContent =
       "例文に漢字が混ざっています（ひらがな推奨）。\n" +
       lines.join("\n") +
-      "\n\n→ (1) 手動でひらがなに修正\n→ (2) 「ひらがなに直す（試す）」を押す（失敗したら手動でOK）";
-  }
-
-  async function tryConvertToKana() {
-    editInfo.style.display = "none";
-    editInfo.textContent = "";
-
-    const before = getExamplesInputs();
-    const after = [...before];
-
-    const targets = before
-      .map((v, i) => ({ i, v: (v ?? "").toString().trim() }))
-      .filter(x => x.v && containsKanji(x.v));
-
-    if (targets.length === 0) {
-      editInfo.style.display = "block";
-      editInfo.textContent = "変換対象（漢字を含む例文）がありません。";
-      return;
-    }
-
-    tryKanaBtn.disabled = true;
-    tryKanaBtn.textContent = "ロード＆変換中…";
-
-    const ok = await ensureKanaReady();
-    if (!ok) {
-      editInfo.style.display = "block";
-      editInfo.textContent = "ひらがな化のロードに失敗しました。手動で修正してください。";
-      tryKanaBtn.disabled = false;
-      tryKanaBtn.textContent = "ひらがなに直す（試す）";
-      return;
-    }
-
-    const changes = [];
-    for (const t of targets) {
-      try {
-        const a = await toHiragana(t.v);
-        after[t.i] = a;
-        if (a !== t.v) changes.push(`・例文${t.i + 1}：${t.v} → ${a}`);
-      } catch (e) {
-        console.error(e);
-      }
-    }
-
-    renderExamplesInputs(after);
-    updateKanjiMixedWarning();
-
-    editInfo.style.display = "block";
-    editInfo.textContent =
-      changes.length
-        ? "変換結果（確認してから保存してください）\n" + changes.join("\n")
-        : "変換しましたが、結果が変わりませんでした（必要なら手動で修正してください）。";
-
-    tryKanaBtn.disabled = false;
-    tryKanaBtn.textContent = "ひらがなに直す（試す）";
+      "\n\n→ 手動でひらがなに直してください（この版は自動変換しません）。";
   }
 
   function saveEditor() {
@@ -694,19 +587,24 @@
     if (idx < 0) return;
 
     const it = items[idx];
-    it.examples = clampExamples(getExamplesInputs());
+
+    // 保存：最大5つ、空欄もOK（空欄は保持しても良いが、表示上は問題ないようにする）
+    const raw = getExamplesInputs().slice(0, 5).map(s => (s ?? "").toString());
+    // データをスッキリさせたいので、末尾の空欄は削る（全部空なら [] になる）
+    while (raw.length && !raw[raw.length - 1].trim()) raw.pop();
+    it.examples = raw;
 
     items[idx] = it;
     saveData(items);
 
+    editInfo.style.display = "block";
     const mixed = it.examples.filter(x => containsKanji((x ?? "").toString().trim()));
-    if (mixed.length > 0) {
-      editInfo.style.display = "block";
-      editInfo.textContent =
-        "保存しました。\n※ 例文に漢字が残っています。必要なら「ひらがなに直す（試す）」または手動で修正してください。";
-    } else {
-      closeEditor();
-    }
+    editInfo.textContent = mixed.length
+      ? "保存しました。\n※ 例文に漢字が残っています。必要なら手動でひらがなに直してください。"
+      : "保存しました。";
+
+    // 混入がなければ閉じる（テンポ優先）
+    if (mixed.length === 0) closeEditor();
 
     render();
   }
@@ -719,6 +617,7 @@
     const end = new Date(); end.setHours(23,59,59,999);
     document.getElementById("todayRange").textContent = `判定範囲：${fmt(start)} 〜 ${fmt(end)}`;
 
+    // 今日の復習
     const due = getDueItems(items);
     document.getElementById("dueCount").textContent = String(due.length);
 
@@ -765,7 +664,7 @@
         hintLines.push("例文：");
         for (const line of ex.slice(0, 5)) hintLines.push(`・${line}`);
       } else {
-        hintLines.push("例文：—（編集で入力）");
+        hintLines.push("例文：—（必要なら「例文を編集」で追加）");
       }
 
       hintLines.push("（タップで答え：漢字を表示）");
@@ -818,8 +717,10 @@
       dueList.appendChild(card);
     }
 
+    // 全漢字テーブル
     const tbody = document.getElementById("allTable");
     tbody.innerHTML = "";
+
     const sorted = [...items].sort((a,b) => new Date(a.nextReviewAt) - new Date(b.nextReviewAt));
 
     for (const it of sorted) {
@@ -834,7 +735,7 @@
         <td class="right">${it.stats.success}</td>
         <td class="right">${it.stats.fail}</td>
         <td class="right">
-          <button class="ghost" data-edit="${it.kanji}" style="padding:6px 10px; border-radius:10px;">編集</button>
+          <button class="ghost" data-edit="${it.kanji}" style="padding:6px 10px; border-radius:10px;">例文</button>
         </td>
       `;
       tbody.appendChild(tr);
@@ -850,24 +751,24 @@
   }
 
   // ===== イベント =====
-  const addBtn = document.getElementById("addBtn");
-  const addInput = document.getElementById("addInput");
+  document.getElementById("addBtn").addEventListener("click", async () => {
+    const addBtn = document.getElementById("addBtn");
+    const addInput = document.getElementById("addInput");
 
-  addBtn.addEventListener("click", async () => {
     const text = addInput.value || "";
     addBtn.disabled = true;
     addBtn.textContent = "追加中…";
 
-    const res = await addKanjiFromTextarea(text);
+    const res = await addKanjiOnly(text);
 
     addBtn.disabled = false;
-    addBtn.textContent = "追加";
+    addBtn.textContent = "漢字を追加";
 
     addInput.value = "";
     render();
 
     if (res.invalid) {
-      alert("追加できませんでした。ブロック形式（1行目=漢字1文字）で入力してください。");
+      alert("追加できませんでした。漢字（1文字）を入力してください。");
       return;
     }
 
@@ -887,23 +788,21 @@
   document.getElementById("importBtn").addEventListener("click", importData);
 
   // モーダル
-  const closeModalBtn = document.getElementById("closeModalBtn");
-  closeModalBtn.addEventListener("click", closeEditor);
+  document.getElementById("closeModalBtn").addEventListener("click", closeEditor);
   backdrop.addEventListener("click", (e) => { if (e.target === backdrop) closeEditor(); });
 
-  addExampleBtn.addEventListener("click", () => {
+  document.getElementById("addExampleBtn").addEventListener("click", () => {
     if (!editingKanji) return;
-    const current = getExamplesInputs();
+    const current = clampExamples(getExamplesInputs());
     if (current.length >= 5) return;
     current.push("");
     renderExamplesInputs(current);
     updateKanjiMixedWarning();
   });
 
-  tryKanaBtn.addEventListener("click", tryConvertToKana);
-  saveEditBtn.addEventListener("click", saveEditor);
+  document.getElementById("saveEditBtn").addEventListener("click", saveEditor);
 
-  deleteKanjiBtn.addEventListener("click", () => {
+  document.getElementById("deleteKanjiBtn").addEventListener("click", () => {
     if (!editingKanji) return;
     const k = editingKanji;
     if (confirm(`「${k}」を削除しますか？`)) {
