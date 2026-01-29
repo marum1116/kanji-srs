@@ -58,7 +58,6 @@
       white-space: pre-line;
       user-select: none;
     }
-    .meta { text-align:right; font-size: 12px; color:#555; min-width: 130px; }
     .actions { display:flex; gap:8px; margin-top: 10px; flex-wrap: wrap; }
 
     table { width:100%; border-collapse: collapse; font-size: 13px; }
@@ -96,7 +95,6 @@
     .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     @media (max-width: 640px) {
       .grid2 { grid-template-columns: 1fr; }
-      .meta { min-width: 0; }
     }
     .label { font-size: 12px; color:#555; margin: 8px 0 6px; }
     .exRow { display:flex; gap:8px; align-items:center; margin: 8px 0; }
@@ -183,10 +181,6 @@
         <tr>
           <th>漢字</th>
           <th>読み（音／訓）</th>
-          <th class="right">stage</th>
-          <th>次回</th>
-          <th class="right">成功</th>
-          <th class="right">失敗</th>
           <th class="right"></th>
         </tr>
         </thead>
@@ -239,7 +233,6 @@
 
 <script>
   // ===== 設定（忘却曲線っぽい復習間隔） =====
-  // stage 0 から順に：+6h, +1d, +3d, +7d, +14d, +30d, +60d, +120d
   const INTERVALS_MS = [
     6 * 60 * 60 * 1000,
     1 * 24 * 60 * 60 * 1000,
@@ -252,10 +245,9 @@
   ];
   const MAX_STAGE = INTERVALS_MS.length - 1;
 
-  // 既存データを引き継ぎたい場合：前のキー（例: kanji_srs_v3 / v4）に合わせてください
+  // 既存データを引き継ぎたい場合：前のキー（例: kanji_srs_v5 など）に合わせてください
   const STORAGE_KEY = "kanji_srs_v5";
 
-  // ===== Kanji API（読み自動取得） =====
   async function fetchReadings(kanjiChar) {
     const url = `https://kanjiapi.dev/v1/kanji/${encodeURIComponent(kanjiChar)}`;
     try {
@@ -271,7 +263,6 @@
     }
   }
 
-  // ===== util =====
   function loadData() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
@@ -326,7 +317,6 @@
 
   function clampExamples(examples) {
     const arr = Array.isArray(examples) ? examples.map(x => (x ?? "").toString()) : [];
-    // デフォルト2枠を見せるため：保存データは空でもOKだが、UI表示は2枠確保する
     while (arr.length < 2) arr.push("");
     return arr.slice(0, 5);
   }
@@ -338,9 +328,7 @@
       .sort((a, b) => new Date(a.nextReviewAt) - new Date(b.nextReviewAt));
   }
 
-  // ===== 追加：漢字だけをまとめて =====
   function parseKanjiList(rawText) {
-    // 改行/空白で分割して、1文字の漢字だけ拾う
     const tokens = (rawText ?? "")
       .replace(/\s+/g, " ")
       .trim()
@@ -351,12 +339,10 @@
 
     const out = [];
     for (const t of tokens) {
-      // 1トークンに複数文字入ってても、1文字ずつばらす（例: "強協" みたいな場合）
       for (const ch of Array.from(t)) {
         if (isSingleKanjiChar(ch)) out.push(ch);
       }
     }
-    // 重複除去（入力内）
     return Array.from(new Set(out));
   }
 
@@ -380,7 +366,7 @@
         kanji: k,
         onYomi: readings.onYomi,
         kunYomi: readings.kunYomi,
-        examples: [], // ←例文は後で入力（空でもOK）
+        examples: [],
         createdAt: toISO(baseNow),
         stage: 0,
         nextReviewAt: toISO(baseNow + INTERVALS_MS[0]),
@@ -396,7 +382,6 @@
     return { added, ignored, invalid: 0, readingFail };
   }
 
-  // ===== 方式B：成功でstage+1、失敗でstage-1（下限0） =====
   function markResult(kanji, result) {
     const items = loadData();
     const idx = items.findIndex(it => it.kanji === kanji);
@@ -465,7 +450,7 @@
         }));
 
       const map = new Map();
-      for (const it of cleaned) map.set(it.kanji, it); // 後勝ち
+      for (const it of cleaned) map.set(it.kanji, it);
       saveData(Array.from(map.values()));
       render();
       alert("インポートしました");
@@ -477,7 +462,6 @@
 
   // ===== 編集モーダル =====
   const backdrop = document.getElementById("backdrop");
-  const closeModalBtn = document.getElementById("closeModalBtn");
   const saveEditBtn = document.getElementById("saveEditBtn");
   const addExampleBtn = document.getElementById("addExampleBtn");
   const deleteKanjiBtn = document.getElementById("deleteKanjiBtn");
@@ -537,7 +521,7 @@
       const del = document.createElement("button");
       del.className = "danger iconBtn";
       del.textContent = "削除";
-      del.disabled = ex.length <= 2; // UI上は最低2枠を維持
+      del.disabled = ex.length <= 2;
       del.addEventListener("click", () => {
         const current = getExamplesInputs();
         if (current.length <= 2) return;
@@ -588,9 +572,7 @@
 
     const it = items[idx];
 
-    // 保存：最大5つ、空欄もOK（空欄は保持しても良いが、表示上は問題ないようにする）
     const raw = getExamplesInputs().slice(0, 5).map(s => (s ?? "").toString());
-    // データをスッキリさせたいので、末尾の空欄は削る（全部空なら [] になる）
     while (raw.length && !raw[raw.length - 1].trim()) raw.pop();
     it.examples = raw;
 
@@ -603,9 +585,7 @@
       ? "保存しました。\n※ 例文に漢字が残っています。必要なら手動でひらがなに直してください。"
       : "保存しました。";
 
-    // 混入がなければ閉じる（テンポ優先）
     if (mixed.length === 0) closeEditor();
-
     render();
   }
 
@@ -617,7 +597,6 @@
     const end = new Date(); end.setHours(23,59,59,999);
     document.getElementById("todayRange").textContent = `判定範囲：${fmt(start)} 〜 ${fmt(end)}`;
 
-    // 今日の復習
     const due = getDueItems(items);
     document.getElementById("dueCount").textContent = String(due.length);
 
@@ -651,8 +630,8 @@
       hidden.addEventListener("click", toggleReveal);
       shown.addEventListener("click", toggleReveal);
 
+      // --- 表示をスッキリ：指示文（白紙で書いた？／タップで答え）は削除 ---
       const hintLines = [];
-      hintLines.push("白紙で書いた？（まずは見ずに思い出して書く）");
 
       const on = it.onYomi ? `音：${it.onYomi}` : "";
       const kun = it.kunYomi ? `訓：${it.kunYomi}` : "";
@@ -667,29 +646,19 @@
         hintLines.push("例文：—（必要なら「例文を編集」で追加）");
       }
 
-      hintLines.push("（タップで答え：漢字を表示）");
       hidden.textContent = hintLines.join("\n");
 
       left.appendChild(hidden);
       left.appendChild(shown);
 
-      const meta = document.createElement("div");
-      meta.className = "meta";
-      meta.innerHTML = `
-        <div>stage: <b>${it.stage}</b></div>
-        <div>期限: ${fmt(it.nextReviewAt)}</div>
-        <div class="muted">成功 ${it.stats.success} / 失敗 ${it.stats.fail}</div>
-      `;
-
       top.appendChild(left);
-      top.appendChild(meta);
 
       const actions = document.createElement("div");
       actions.className = "actions";
 
       const revealBtn = document.createElement("button");
       revealBtn.className = "ghost";
-      revealBtn.textContent = "答え（漢字）を表示/非表示";
+      revealBtn.textContent = "答え（漢字）";
       revealBtn.addEventListener("click", toggleReveal);
 
       const editBtn = document.createElement("button");
@@ -717,12 +686,11 @@
       dueList.appendChild(card);
     }
 
-    // 全漢字テーブル
+    // 全漢字テーブル：stage/期限/成功失敗は非表示
     const tbody = document.getElementById("allTable");
     tbody.innerHTML = "";
 
     const sorted = [...items].sort((a,b) => new Date(a.nextReviewAt) - new Date(b.nextReviewAt));
-
     for (const it of sorted) {
       const tr = document.createElement("tr");
       const on = it.onYomi ? it.onYomi : "—";
@@ -730,10 +698,6 @@
       tr.innerHTML = `
         <td style="font-size:20px;">${it.kanji}</td>
         <td><div class="small">音：${on}</div><div class="small">訓：${kun}</div></td>
-        <td class="right">${it.stage}</td>
-        <td>${fmt(it.nextReviewAt)}</td>
-        <td class="right">${it.stats.success}</td>
-        <td class="right">${it.stats.fail}</td>
         <td class="right">
           <button class="ghost" data-edit="${it.kanji}" style="padding:6px 10px; border-radius:10px;">例文</button>
         </td>
@@ -789,7 +753,7 @@
 
   // モーダル
   document.getElementById("closeModalBtn").addEventListener("click", closeEditor);
-  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) closeEditor(); });
+  document.getElementById("backdrop").addEventListener("click", (e) => { if (e.target === e.currentTarget) closeEditor(); });
 
   document.getElementById("addExampleBtn").addEventListener("click", () => {
     if (!editingKanji) return;
@@ -800,9 +764,9 @@
     updateKanjiMixedWarning();
   });
 
-  document.getElementById("saveEditBtn").addEventListener("click", saveEditor);
+  saveEditBtn.addEventListener("click", saveEditor);
 
-  document.getElementById("deleteKanjiBtn").addEventListener("click", () => {
+  deleteKanjiBtn.addEventListener("click", () => {
     if (!editingKanji) return;
     const k = editingKanji;
     if (confirm(`「${k}」を削除しますか？`)) {
