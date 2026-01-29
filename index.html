@@ -126,10 +126,9 @@
 <header>
   <h1>忘却曲線っぽい漢字復習（SRS）</h1>
   <div class="sub">
-    <span class="pill" id="kanaStatus"><span class="dot warn" id="kanaDot"></span><span id="kanaText">ひらがな化：準備中</span></span>
     <span class="pill"><span class="dot ok"></span>例文はキーボードの🎤（音声入力）でOK</span>
     <span class="pill"><span class="dot ok"></span>方式B：失敗でstage-1（下限0）</span>
-    <span class="pill"><span class="dot warn"></span>ひらがな化は「ボタンを押した時だけ」実行（折衷案）</span>
+    <span class="pill" id="kanaStatus"><span class="dot warn" id="kanaDot"></span><span id="kanaText">ひらがな化：未ロード（ボタンで必要時のみ）</span></span>
   </div>
 </header>
 
@@ -158,7 +157,7 @@
     <div class="small" style="margin-top:8px;">
       ・ブロック形式：<b>1行目=漢字（1文字）</b>、2行目以降=例文（ひらがな推奨）<br/>
       ・例文は <b>デフォルト2つ</b>（足りない分は空欄で作成）／あとで最大 <b>5つ</b>まで追加できます。<br/>
-      ・例文に漢字が混ざった場合は、編集画面の <b>「ひらがなに直す（試す）」</b> で変換できます（不調でも手動で直せる仕様）。
+      ・例文に漢字が混ざった場合は、編集画面の <b>「ひらがなに直す（試す）」</b> を押せます（失敗したら手動でOK）。
     </div>
   </section>
 
@@ -221,7 +220,7 @@
       <div class="label" style="margin-top:12px;">例文（デフォルト2 / 最大5）</div>
       <div class="small muted">
         ・例文は「ひらがな」推奨（口頭の指示を再現するため）<br/>
-        ・漢字が混ざっていたら、保存前に <b>「ひらがなに直す（試す）」</b> を押す（失敗したら手動で修正）
+        ・漢字が混ざっていたら、保存前に <b>「ひらがなに直す（試す）」</b>（不調なら手動で修正）
       </div>
 
       <div id="examplesArea" style="margin-top:6px;"></div>
@@ -240,46 +239,6 @@
 </div>
 
 <script type="module">
-  // ====== ひらがな化（kuroshiro）※折衷案：ボタンを押した時だけ使う ======
-  import Kuroshiro from "https://esm.sh/kuroshiro@1.2.0";
-  import KuromojiAnalyzer from "https://esm.sh/kuroshiro-analyzer-kuromoji@1.1.0";
-
-  let kuroshiro = null;
-  let kanaReady = false;
-
-  const kanaDot = document.getElementById("kanaDot");
-  const kanaText = document.getElementById("kanaText");
-
-  function setKanaStatus(kind, text) {
-    kanaDot.classList.remove("ok", "warn", "bad");
-    kanaDot.classList.add(kind);
-    kanaText.textContent = text;
-  }
-
-  async function initKuroshiro() {
-    try {
-      setKanaStatus("warn", "ひらがな化：辞書ロード中…（初回は少し長い）");
-      kuroshiro = new Kuroshiro();
-      await kuroshiro.init(new KuromojiAnalyzer({
-        dictPath: "https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/"
-      }));
-      kanaReady = true;
-      setKanaStatus("ok", "ひらがな化：準備OK（ボタンで実行）");
-    } catch (e) {
-      console.error(e);
-      kanaReady = false;
-      setKanaStatus("bad", "ひらがな化：未使用（ロード失敗→手動でOK）");
-    }
-  }
-  initKuroshiro();
-
-  async function toHiragana(text) {
-    const t = (text ?? "").toString().trim();
-    if (!t) return "";
-    if (!kanaReady || !kuroshiro) throw new Error("kuroshiro not ready");
-    return (await kuroshiro.convert(t, { to: "hiragana", mode: "normal" })).toString().trim();
-  }
-
   // ===== 設定（忘却曲線っぽい復習間隔） =====
   const INTERVALS_MS = [
     6 * 60 * 60 * 1000,
@@ -292,7 +251,58 @@
     120 * 24 * 60 * 60 * 1000,
   ];
   const MAX_STAGE = INTERVALS_MS.length - 1;
-  const STORAGE_KEY = "kanji_srs_v3";
+  const STORAGE_KEY = "kanji_srs_v4"; // ←以前のデータを引き継ぎたいなら v3 等に合わせる
+
+  // ===== UI: ひらがな化ステータス =====
+  const kanaDot = document.getElementById("kanaDot");
+  const kanaText = document.getElementById("kanaText");
+  function setKanaStatus(kind, text) {
+    kanaDot.classList.remove("ok", "warn", "bad");
+    kanaDot.classList.add(kind);
+    kanaText.textContent = text;
+  }
+
+  // ===== 折衷案：kuroshiroは「必要時のみ」動的import =====
+  let kuroshiro = null;
+  let kanaReady = false;
+  let kanaInitTried = false;
+
+  async function ensureKanaReady() {
+    if (kanaReady) return true;
+    if (kanaInitTried && !kanaReady) return false;
+
+    kanaInitTried = true;
+    setKanaStatus("warn", "ひらがな化：ロード中…（必要時のみ）");
+
+    try {
+      const [{ default: Kuroshiro }, { default: KuromojiAnalyzer }] = await Promise.all([
+        import("https://esm.sh/kuroshiro@1.2.0"),
+        import("https://esm.sh/kuroshiro-analyzer-kuromoji@1.1.0"),
+      ]);
+
+      kuroshiro = new Kuroshiro();
+      await kuroshiro.init(new KuromojiAnalyzer({
+        dictPath: "https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/"
+      }));
+
+      kanaReady = true;
+      setKanaStatus("ok", "ひらがな化：準備OK（ボタンで実行）");
+      return true;
+    } catch (e) {
+      console.error(e);
+      kanaReady = false;
+      setKanaStatus("bad", "ひらがな化：利用不可（手動でOK）");
+      return false;
+    }
+  }
+
+  async function toHiragana(text) {
+    const t = (text ?? "").toString().trim();
+    if (!t) return "";
+    const ok = await ensureKanaReady();
+    if (!ok || !kuroshiro) throw new Error("kana not available");
+    return (await kuroshiro.convert(t, { to: "hiragana", mode: "normal" })).toString().trim();
+  }
 
   // ===== Kanji API（読み自動取得） =====
   async function fetchReadings(kanjiChar) {
@@ -310,13 +320,12 @@
     }
   }
 
-  // ===== データ型 =====
   /**
    * @typedef {{
    *   kanji: string,
    *   onYomi: string,
    *   kunYomi: string,
-   *   examples: string[], // 最大5（基本ひらがな）
+   *   examples: string[],
    *   createdAt: string,
    *   stage: number,
    *   nextReviewAt: string,
@@ -405,7 +414,6 @@
     return arr.slice(0, 5);
   }
 
-  // ===== 追加（APIで読み取得＋例文2枠） =====
   async function addKanjiFromTextarea(text) {
     const items = loadData();
     const existing = new Set(items.map(it => it.kanji));
@@ -441,7 +449,6 @@
     return { added, ignored, invalid: 0, readingFail };
   }
 
-  // ===== 方式B =====
   function markResult(kanji, result) {
     const items = loadData();
     const idx = items.findIndex(it => it.kanji === kanji);
@@ -553,13 +560,9 @@
     editInfo.style.display = "none";
     editInfo.textContent = "";
 
-    // ひらがな化ボタンの状態
-    tryKanaBtn.disabled = !kanaReady;
-
     backdrop.style.display = "flex";
     backdrop.setAttribute("aria-hidden", "false");
 
-    // 初期警告（漢字混入）
     updateKanjiMixedWarning();
   }
 
@@ -628,53 +631,60 @@
     editWarn.textContent =
       "例文に漢字が混ざっています（ひらがな推奨）。\n" +
       lines.join("\n") +
-      "\n\n→ 直し方：\n(1) 手動でひらがなに修正\n(2) 「ひらがなに直す（試す）」を押す（うまくいかなければ手動でOK）";
+      "\n\n→ (1) 手動でひらがなに修正\n→ (2) 「ひらがなに直す（試す）」を押す（失敗したら手動でOK）";
   }
 
   async function tryConvertToKana() {
-    if (!kanaReady) {
-      editInfo.style.display = "block";
-      editInfo.textContent = "ひらがな化が利用できません（辞書ロード失敗）。手動で修正してください。";
-      return;
-    }
+    editInfo.style.display = "none";
+    editInfo.textContent = "";
 
     const before = getExamplesInputs();
     const after = [...before];
 
-    const changes = [];
+    const targets = before
+      .map((v, i) => ({ i, v: (v ?? "").toString().trim() }))
+      .filter(x => x.v && containsKanji(x.v));
+
+    if (targets.length === 0) {
+      editInfo.style.display = "block";
+      editInfo.textContent = "変換対象（漢字を含む例文）がありません。";
+      return;
+    }
+
     tryKanaBtn.disabled = true;
-    tryKanaBtn.textContent = "変換中…";
+    tryKanaBtn.textContent = "ロード＆変換中…";
 
-    for (let i = 0; i < before.length; i++) {
-      const b = (before[i] ?? "").toString().trim();
-      if (!b) continue;
-      if (!containsKanji(b)) continue; // 漢字がないなら触らない（テンポ優先）
+    const ok = await ensureKanaReady();
+    if (!ok) {
+      editInfo.style.display = "block";
+      editInfo.textContent = "ひらがな化のロードに失敗しました。手動で修正してください。";
+      tryKanaBtn.disabled = false;
+      tryKanaBtn.textContent = "ひらがなに直す（試す）";
+      return;
+    }
 
+    const changes = [];
+    for (const t of targets) {
       try {
-        const a = await toHiragana(b);
-        after[i] = a;
-        if (a !== b) changes.push(`・例文${i + 1}：${b} → ${a}`);
+        const a = await toHiragana(t.v);
+        after[t.i] = a;
+        if (a !== t.v) changes.push(`・例文${t.i + 1}：${t.v} → ${a}`);
       } catch (e) {
         console.error(e);
       }
     }
 
-    // 入力欄に反映
     renderExamplesInputs(after);
+    updateKanjiMixedWarning();
 
-    // メッセージ
     editInfo.style.display = "block";
-    if (changes.length === 0) {
-      editInfo.textContent = "ひらがな化：変換対象がないか、変換結果が変わりませんでした（必要なら手動で修正してください）。";
-    } else {
-      editInfo.textContent = "ひらがな化：変換結果（確認してから保存してください）\n" + changes.join("\n");
-    }
+    editInfo.textContent =
+      changes.length
+        ? "変換結果（確認してから保存してください）\n" + changes.join("\n")
+        : "変換しましたが、結果が変わりませんでした（必要なら手動で修正してください）。";
 
     tryKanaBtn.disabled = false;
     tryKanaBtn.textContent = "ひらがなに直す（試す）";
-
-    // 警告更新
-    updateKanjiMixedWarning();
   }
 
   function saveEditor() {
@@ -689,7 +699,6 @@
     items[idx] = it;
     saveData(items);
 
-    // 保存後も、漢字混入があるなら一応注意（ただし閉じない）
     const mixed = it.examples.filter(x => containsKanji((x ?? "").toString().trim()));
     if (mixed.length > 0) {
       editInfo.style.display = "block";
@@ -809,7 +818,6 @@
       dueList.appendChild(card);
     }
 
-    // 全漢字テーブル
     const tbody = document.getElementById("allTable");
     tbody.innerHTML = "";
     const sorted = [...items].sort((a,b) => new Date(a.nextReviewAt) - new Date(b.nextReviewAt));
@@ -879,6 +887,7 @@
   document.getElementById("importBtn").addEventListener("click", importData);
 
   // モーダル
+  const closeModalBtn = document.getElementById("closeModalBtn");
   closeModalBtn.addEventListener("click", closeEditor);
   backdrop.addEventListener("click", (e) => { if (e.target === backdrop) closeEditor(); });
 
